@@ -1,9 +1,9 @@
 TOKEN = ''
 
 DB_CONFIG = {
-    'database': 'translate',
+    'database': '',
     'user': 'postgres',
-    'password': 'ForIT',
+    'password': '',
     'host': 'localhost',
     'port': '5432'
 }

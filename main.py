@@ -121,9 +121,9 @@ def message_reply(message):
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
         target_word = data['target_word']
     if message.text == target_word:
-        bot.send_message(message.chat.id, 'Все правильно')
+        bot.send_message(message.chat.id, 'Все правильно!')
     else:
-        bot.send_message(message.chat.id, 'Ошибка')
+        bot.send_message(message.chat.id, 'Неправильно! Попробуй еще раз!')
 
 
 if __name__ == '__main__':
