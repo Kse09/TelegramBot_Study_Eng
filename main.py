@@ -27,7 +27,7 @@ class MyStates(StatesGroup):
     delete_word = State()
 
 def register_user(user_id, username):
-    connection = psycopg2.connect(**config.DB_CONFIG)
+    connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute(
         "INSERT INTO tg_users (tg_user_id, user_name) VALUES (%s, %s) ON CONFLICT (tg_user_id) DO NOTHING",
@@ -38,7 +38,7 @@ def register_user(user_id, username):
     connection.close()
 
 def get_user_id(tg_user_id):
-    connection = psycopg2.connect(**config.DB_CONFIG)
+    connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM tg_users WHERE tg_user_id = %s", (tg_user_id,))
     result = cursor.fetchone()
@@ -47,7 +47,7 @@ def get_user_id(tg_user_id):
     return result[0]
 
 def get_random_word_from_db(exclude_words=None):
-    connection = psycopg2.connect(**config.DB_CONFIG)
+    connection = get_db_connection()
     cursor = connection.cursor()
 
     if exclude_words:
@@ -64,7 +64,7 @@ def get_random_word_from_db(exclude_words=None):
     return {'english': result[0], 'russian': result[1]}
 
 def get_other_words_from_db(target_word, count=3):
-    connection = psycopg2.connect(**config.DB_CONFIG)
+    connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute(
         "SELECT english FROM words WHERE english != %s ORDER BY RANDOM() LIMIT %s",
@@ -76,7 +76,7 @@ def get_other_words_from_db(target_word, count=3):
     return [result[0] for result in results]
 
 def get_user_words_from_db(user_id):
-    connection = psycopg2.connect(**config.DB_CONFIG)
+    connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute(
         "SELECT eng_word, rus_word FROM user_words WHERE user_id = %s",
@@ -88,7 +88,7 @@ def get_user_words_from_db(user_id):
     return [{'english': result[0], 'russian': result[1]} for result in results]
 
 def add_user_word_to_db(user_id, english, russian):
-    connection = psycopg2.connect(**config.DB_CONFIG)
+    connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute(
         "INSERT INTO user_words (user_id, eng_word, rus_word) VALUES (%s, %s, %s)",
@@ -100,7 +100,7 @@ def add_user_word_to_db(user_id, english, russian):
     return True
 
 def delete_user_word_from_db(user_id, english):
-    connection = psycopg2.connect(**config.DB_CONFIG)
+    connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute(
         "DELETE FROM user_words WHERE user_id = %s AND eng_word = %s",
