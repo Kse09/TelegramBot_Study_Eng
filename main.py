@@ -46,22 +46,26 @@ def get_user_id(tg_user_id):
     connection.close()
     return result[0]
 
-def get_random_word_from_db(exclude_words=None):
+def get_random_word_from_db(user_id):
     connection = get_db_connection()
     cursor = connection.cursor()
 
-    if exclude_words:
-        placeholders = ','.join(['%s'] * len(exclude_words))
-        query = f"SELECT english, russian FROM words WHERE english NOT IN ({placeholders}) ORDER BY RANDOM() LIMIT 1"
-        cursor.execute(query, exclude_words)
-    else:
-        cursor.execute("SELECT english, russian FROM words ORDER BY RANDOM() LIMIT 1")
+    cursor.execute("""
+            SELECT w.english, w.russian
+            FROM words w
+            UNION
+            SELECT w.english, w.russian
+            FROM user_words uw
+            JOIN words w ON uw.word_id = w.id_words
+            WHERE uw.user_id = %s
+        """, (user_id,))
 
-    result = cursor.fetchone()
+    results = cursor.fetchone()
     cursor.close()
     connection.close()
 
-    return {'english': result[0], 'russian': result[1]}
+    all_words = [{'english': result[0], 'russian': result[1]} for result in results]
+    return random.choice(all_words)
 
 def get_other_words_from_db(target_word, count=3):
     connection = get_db_connection()
@@ -79,7 +83,10 @@ def get_user_words_from_db(user_id):
     connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute(
-        "SELECT eng_word, rus_word FROM user_words WHERE user_id = %s",
+        """SELECT w.english, w.russian 
+           FROM user_words uw 
+           JOIN words w ON uw.word_id = w.id_words 
+           WHERE uw.user_id = %s""",
         (user_id,)
     )
     results = cursor.fetchall()
@@ -91,8 +98,22 @@ def add_user_word_to_db(user_id, english, russian):
     connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute(
-        "INSERT INTO user_words (user_id, eng_word, rus_word) VALUES (%s, %s, %s)",
-        (user_id, english, russian)
+        "SELECT id_words FROM words WHERE english = %s AND russian = %s",
+                  (english, russian))
+    word_id_result = cursor.fetchone()
+
+    if word_id_result:
+        word_id = word_id_result[0]
+    else:
+        cursor.execute(
+            "INSERT INTO words (english, russian) VALUES (%s, %s) RETURNING id_words",
+            (english, russian)
+        )
+        word_id = cursor.fetchone()[0]
+
+    cursor.execute(
+        "INSERT INTO user_words (user_id, word_id) VALUES (%s, %s) ON CONFLICT (user_id, word_id) DO NOTHING",
+        (user_id, word_id)
     )
     connection.commit()
     cursor.close()
@@ -102,26 +123,26 @@ def add_user_word_to_db(user_id, english, russian):
 def delete_user_word_from_db(user_id, english):
     connection = get_db_connection()
     cursor = connection.cursor()
-    cursor.execute(
-        "DELETE FROM user_words WHERE user_id = %s AND eng_word = %s",
-        (user_id, english)
-    )
+    cursor.execute("SELECT id_words FROM words WHERE english = %s", (english,))
+    result = cursor.fetchone()
+    word_id = result[0]
+
+    cursor.execute("DELETE FROM user_words WHERE word_id = %s",(word_id,))
+
+    cursor.execute("DELETE FROM words WHERE id_words = %s",(word_id,))
     connection.commit()
-    deleted_count = cursor.rowcount
     cursor.close()
     connection.close()
     return True
 
 def get_next_word(user_id):
-    user_words = get_user_words_from_db(user_id)
-    word = get_random_word_from_db([])
+    word = get_random_word_from_db(user_id)
     other_words = get_other_words_from_db(word['english'])
     return word, other_words
 
 @bot.message_handler(commands=['start'])
 def start_command(message):
     register_user(message.from_user.id, message.from_user.username)
-
     welcome_text = """
     Привет! Я -  бот для изучения английских слов!
 
@@ -136,7 +157,6 @@ def start_command(message):
 
     Нажмите /cards, чтобы начать изучение!
     """
-
     bot.send_message(message.chat.id, welcome_text)
 
 
@@ -195,7 +215,7 @@ def add_russian_word(message):
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
         english_word = data['new_english']
         russian_word = message.text.strip().lower()
-        user_id = data.get('user_id', get_user_id(message.from_user.id))
+    user_id = get_user_id(message.from_user.id)
 
     if user_id and add_user_word_to_db(user_id, english_word, russian_word):
         bot.send_message(message.chat.id, f"Слово '{english_word}' - '{russian_word}' успешно добавлено в ваш словарь!")
@@ -251,10 +271,6 @@ def message_reply(message):
                 bot.send_message(message.chat.id, 'Все правильно! Чтобы продолжить, нажмите кнопку "Дальше".')
             else:
                 bot.send_message(message.chat.id, 'Неправильно! Попробуйте еще раз!')
-
-@bot.message_handler(func=lambda message: True)
-def handle_other_messages(message):
-    bot.send_message(message.chat.id, "Используйте кнопки на клавиатуре или команды /start, /cards")
 
 
 if __name__ == '__main__':
